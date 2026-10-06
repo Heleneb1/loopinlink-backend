@@ -159,6 +159,7 @@ def login_email(request):
 
 class CustomCookieTokenRefreshView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = []
     def post(self, request):
         refresh_token = request.COOKIES.get('refresh_token')
 
@@ -186,6 +187,7 @@ class CustomCookieTokenRefreshView(APIView):
 
 class LogoutView(APIView):
     permission_classes = [AllowAny]
+    throttle_classes = []
     def post(self, request):
         refresh_token = request.COOKIES.get('refresh_token')
 

@@ -129,7 +129,9 @@ class DesignViewSet(viewsets.ModelViewSet):
             status_code = status.HTTP_201_CREATED
 
         serializer.is_valid(raise_exception=True)
+        print("🔥 AVANT SERIALIZER.SAVE", flush=True)
         design = serializer.save(user=user, is_template=is_template)
+        print("🔥 APRÈS SERIALIZER.SAVE", flush=True)
 
         # On repart d'une base propre : on retire les anciennes images liées
         # avant de réenregistrer celles envoyées dans cette requête.
