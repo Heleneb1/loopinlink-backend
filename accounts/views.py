@@ -7,6 +7,9 @@ from designs.utils import process_image, validate_image_file
 
 from .models import UserProfile
 
+AVATAR_SIZE = 256   # px, carré
+AVATAR_QUALITY = 80
+
 
 @api_view(['POST'])
 @permission_classes([IsAuthenticated])
@@ -21,10 +24,24 @@ def upload_avatar(request):
     if error:
         return Response({"error": error}, status=status.HTTP_400_BAD_REQUEST)
 
+    # Traiter AVANT de supprimer l'ancien avatar : si le traitement échoue,
+    # l'utilisateur garde son avatar actuel.
+    try:
+        processed = process_image(
+            avatar_file,
+            max_dimension=AVATAR_SIZE,
+            quality=AVATAR_QUALITY,
+            square=True,
+        )
+    except Exception:
+        return Response(
+            {"error": "Impossible de traiter cette image."},
+            status=status.HTTP_400_BAD_REQUEST,
+        )
+
     if profile.avatar:
         profile.avatar.delete(save=False)
 
-    processed = process_image(avatar_file)
     profile.avatar = processed
     profile.save()
 
