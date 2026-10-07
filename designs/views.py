@@ -1,5 +1,11 @@
+import json
+import os
+import uuid
+
+from django.core.files.storage import default_storage
 from rest_framework import status, viewsets
 from rest_framework.decorators import action
+from rest_framework.exceptions import PermissionDenied
 from rest_framework.parsers import FormParser, JSONParser, MultiPartParser
 from rest_framework.permissions import AllowAny, IsAuthenticated
 from rest_framework.response import Response
@@ -8,6 +14,17 @@ from designs.utils import process_image, validate_image_file
 
 from .models import Design, DesignImage
 from .serializers import DesignSerializer
+
+
+def _load_design_data(design):
+    """Retourne le champ data du design sous forme de dict (jamais None)."""
+    data = design.data
+    if isinstance(data, str):
+        try:
+            data = json.loads(data)
+        except (ValueError, TypeError):
+            data = {}
+    return data if isinstance(data, dict) else {}
 
 
 class DesignViewSet(viewsets.ModelViewSet):
@@ -34,7 +51,6 @@ class DesignViewSet(viewsets.ModelViewSet):
             {"detail": "Design supprimé avec succès."},
             status=status.HTTP_204_NO_CONTENT,
         )
-
 
     @action(
         detail=False,
@@ -100,10 +116,10 @@ class DesignViewSet(viewsets.ModelViewSet):
                 )
 
         if is_template and not user.is_staff:
-            from rest_framework.exceptions import PermissionDenied
             raise PermissionDenied(
                 "Seuls les utilisateurs staff peuvent créer des templates."
             )
+
         # Valider tous les fichiers AVANT de toucher au serializer ou à la base
         for key, file in request.FILES.items():
             if key == 'preview_image':
@@ -129,27 +145,48 @@ class DesignViewSet(viewsets.ModelViewSet):
             status_code = status.HTTP_201_CREATED
 
         serializer.is_valid(raise_exception=True)
-        print("🔥 AVANT SERIALIZER.SAVE", flush=True)
         design = serializer.save(user=user, is_template=is_template)
-        print("🔥 APRÈS SERIALIZER.SAVE", flush=True)
 
-        # On repart d'une base propre : on retire les anciennes images liées
-        # avant de réenregistrer celles envoyées dans cette requête.
-        design.designimage_set.all().delete()
-
+        # 1. Créer ou remplacer uniquement les images envoyées dans cette requête
+        incoming_ids = set()
         for key, file in request.FILES.items():
             if key == 'preview_image':
                 continue
 
             element_id = key.replace('file_', '')
+            incoming_ids.add(element_id)
             processed_file = process_image(file)
 
-            DesignImage.objects.create(
-                design=design,
-                file=processed_file,
-                element_id=element_id,
-                type=design_type,
-            )
+            existing = design.designimage_set.filter(element_id=element_id).first()
+            if existing:
+                if existing.file:
+                    existing.file.delete(save=False)  # supprime l'ancien fichier remplacé
+                existing.file = processed_file
+                existing.type = design_type
+                existing.save()
+            else:
+                DesignImage.objects.create(
+                    design=design,
+                    file=processed_file,
+                    element_id=element_id,
+                    type=design_type,
+                )
+
+        # 2. Supprimer seulement les images dont l'élément n'est plus dans le canvas
+        data = _load_design_data(design)
+        data_str = json.dumps(data)
+        background = data.get('backgroundImage') or {}
+        background_in_use = bool(background.get('url'))
+
+        for img in design.designimage_set.exclude(element_id__in=incoming_ids):
+            if img.element_id == 'background':
+                still_used = background_in_use
+            else:
+                still_used = img.element_id in data_str
+
+            if not still_used:
+                img.delete()  # le signal post_delete supprime aussi le fichier physique
+
         return Response(
             self.get_serializer(design, context={'request': request}).data,
             status=status_code,
@@ -166,9 +203,11 @@ class DesignViewSet(viewsets.ModelViewSet):
             return Response({'error': error}, status=status.HTTP_400_BAD_REQUEST)
 
         processed_image = process_image(image)
-        from django.core.files.storage import default_storage
-        name = default_storage.save(f'designs/{image.name}', processed_image)
+
+        # Nom généré côté serveur : le nom fourni par le client n'est pas fiable
+        source_name = getattr(processed_image, 'name', None) or image.name
+        extension = os.path.splitext(source_name)[1].lower() or '.png'
+        name = default_storage.save(f'designs/{uuid.uuid4().hex}{extension}', processed_image)
         url = request.build_absolute_uri(f'/media/{name}')
 
         return Response({'image_url': url}, status=status.HTTP_200_OK)
-
