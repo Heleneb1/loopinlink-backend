@@ -5,6 +5,7 @@ from django.contrib.auth import authenticate
 from django.contrib.auth.models import User
 from django.contrib.auth.password_validation import validate_password
 from django.core.exceptions import ValidationError
+from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
 from rest_framework.permissions import AllowAny, IsAuthenticated
@@ -15,6 +16,8 @@ from rest_framework_simplejwt.tokens import RefreshToken
 
 from accounts.models import UserProfile
 from accounts.throttling import LoginRateThrottle, RegisterRateThrottle
+
+from .models import TermsAcceptance
 
 
 def set_jwt_cookies(response, access_token, refresh_token=None):
@@ -81,42 +84,38 @@ def register(request):
     password = request.data.get('password', '')
     first_name = request.data.get('first_name', '').strip()
     last_name = request.data.get('last_name', '').strip()
+    accept_terms = request.data.get('accept_terms') in (True, 'true')
 
     if not email or not password:
-        return Response(
-            {'error': 'Champs requis'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'error': 'required_fields'}, status=status.HTTP_400_BAD_REQUEST)
+
+    if not accept_terms:
+        return Response({'error': 'terms_required'}, status=status.HTTP_400_BAD_REQUEST)
 
     if User.objects.filter(email=email).exists():
-        return Response(
-            {'error': 'Utilisateur existe déjà'},
-            status=status.HTTP_400_BAD_REQUEST
-        )
+        return Response({'error': 'user_exists'}, status=status.HTTP_400_BAD_REQUEST)
 
     try:
         validate_password(password)
     except ValidationError as error:
         return Response(
-            {'error': error.messages},
-            status=status.HTTP_400_BAD_REQUEST
+            {'error': 'password_invalid', 'details': error.messages},
+            status=status.HTTP_400_BAD_REQUEST,
         )
 
     username = str(uuid.uuid4())[:8]
 
-    user = User.objects.create_user(
-        username=username,
-        email=email,
-        password=password,
-        first_name=first_name,
-        last_name=last_name
-    )
+    with transaction.atomic():
+        user = User.objects.create_user(
+            username=username,
+            email=email,
+            password=password,
+            first_name=first_name,
+            last_name=last_name,
+        )
+        TermsAcceptance.objects.create(user=user, version=settings.TERMS_VERSION)
 
-    return Response({
-        'message': 'Utilisateur créé',
-        'id': user.id,
-    }, status=status.HTTP_201_CREATED)
-
+    return Response({'message': 'Utilisateur créé', 'id': user.id}, status=status.HTTP_201_CREATED)
 
 @api_view(['POST'])
 @permission_classes([AllowAny])

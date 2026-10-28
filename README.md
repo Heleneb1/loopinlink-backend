@@ -23,6 +23,7 @@ source venv/bin/activate
 
 ```bash
 pip install -r requirements.txt
+
 ```
 
 ### 3. Configurer les variables d'environnement

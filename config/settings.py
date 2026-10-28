@@ -52,6 +52,7 @@ INSTALLED_APPS = [
 
     'designs.apps.DesignsConfig',
     'accounts.apps.AccountsConfig',
+    'ai',
 ]
 
 MIDDLEWARE = [
@@ -160,6 +161,13 @@ STORAGES = {
         "BACKEND": "whitenoise.storage.CompressedManifestStaticFilesStorage",
     },
 }
+# --- Caches ---
+CACHES = {
+    "default": {
+        "BACKEND": "django.core.cache.backends.db.DatabaseCache",
+        "LOCATION": "django_cache",
+    }
+}
 
 MEDIA_URL = '/media/'
 MEDIA_ROOT = BASE_DIR / 'media'
@@ -192,3 +200,15 @@ LOGGING = {
     },
     'root': {'handlers': ['console'], 'level': 'WARNING'},
 }
+
+TERMS_VERSION = config("TERMS_VERSION", default="2026-10-22")
+
+# --- IA ---
+GEMINI_MODEL = config("GEMINI_MODEL", default="gemini-flash-lite-latest")
+GEMINI_API_KEY = config("GEMINI_API_KEY")
+CF_ACCOUNT_ID = config("CF_ACCOUNT_ID")
+CF_API_TOKEN = config("CF_API_TOKEN")
+
+# --- Quotas ---
+AI_DAILY_LIMIT_TEXT = config("AI_DAILY_LIMIT_TEXT", default=500, cast=int)
+AI_DAILY_LIMIT_IMAGE = config("AI_DAILY_LIMIT_IMAGE", default=150, cast=int)
