@@ -8,16 +8,15 @@ from django.core.exceptions import ValidationError
 from django.db import transaction
 from rest_framework import status
 from rest_framework.decorators import api_view, permission_classes, throttle_classes
-from rest_framework.permissions import AllowAny, IsAuthenticated
+from rest_framework.permissions import AllowAny
 from rest_framework.response import Response
 from rest_framework.views import APIView
 from rest_framework_simplejwt.exceptions import InvalidToken, TokenError
 from rest_framework_simplejwt.tokens import RefreshToken
 
-from accounts.models import UserProfile
 from accounts.throttling import LoginRateThrottle, RegisterRateThrottle
 
-from .models import TermsAcceptance
+from ..models import TermsAcceptance
 
 
 def set_jwt_cookies(response, access_token, refresh_token=None):
@@ -203,21 +202,3 @@ class LogoutView(APIView):
         return response
 
 
-@api_view(['GET'])
-@permission_classes([IsAuthenticated])
-def get_my_profile(request):
-    user = request.user
-    try:
-        profile = user.userprofile
-        avatar_url = profile.avatar.url if profile.avatar else None
-    except UserProfile.DoesNotExist:
-        avatar_url = None
-
-    return Response({
-        "id": user.id,
-        "first_name": user.first_name,
-        "last_name": user.last_name,
-        "email": user.email,
-        "avatar": avatar_url,
-        "is_staff": user.is_staff
-    })

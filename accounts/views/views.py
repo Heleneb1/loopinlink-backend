@@ -3,9 +3,8 @@ from rest_framework.decorators import api_view, permission_classes
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 
+from accounts.models import UserProfile
 from designs.utils import process_image, validate_image_file
-
-from .models import UserProfile
 
 AVATAR_SIZE = 256   # px, carré
 AVATAR_QUALITY = 80
